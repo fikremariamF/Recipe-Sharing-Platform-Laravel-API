@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Recipe;
 use App\Models\User;
-use App\Models\Ingredient;
 
 class RecipeController extends Controller
 {
@@ -25,15 +24,19 @@ class RecipeController extends Controller
     {
         $request->validate([
             'title' => 'required|string|max:255',
-            'ingredients' => 'required',
             'instruction' => 'required|string',
             'preparation_time' => 'required|integer',
             'user_id' => 'required|exists:users,id',
+            'ingredients' => 'required|array',
+            'ingredients.*.name' => 'required|string|max:255',
         ]);
-        $recipe = Recipe::create($request->all());
-        foreach ($request['ingredients'] as $ingredient) {
-            Ingredient::create(['name'=>$ingredient, 'recipe_id'=> $recipe->id]);
+
+        $recipe = Recipe::create($request->only(['title', 'instruction', 'preparation_time', 'user_id']));
+
+        foreach ($request->ingredients as $ingredientData) {
+            $recipe->ingredients()->create($ingredientData);
         }
+
         return response()->json(['message' => 'Recipe created successfully', 'recipe' => $recipe], 201);
     }
 
@@ -42,7 +45,7 @@ class RecipeController extends Controller
         $recipe = Recipe::findOrFail($id);
         $temp_user = auth()->user();
 
-        if($recipe->user_id != $temp_user->id){
+        if ($recipe->user_id != $temp_user->id) {
             return response()->json(['error' => "Unauthorized"], 400);
         }
 
@@ -50,9 +53,19 @@ class RecipeController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'instruction' => 'sometimes|required|string',
             'preparation_time' => 'sometimes|required|integer',
+            'ingredients' => 'sometimes|array',
+            'ingredients.*.name' => 'sometimes|required|string|max:255',
         ]);
 
-        $recipe->update($request->all());
+        $recipe->update($request->only(['title', 'instruction', 'preparation_time']));
+
+        if ($request->has('ingredients')) {
+            $recipe->ingredients()->delete(); // Remove existing ingredients
+            foreach ($request->ingredients as $ingredientData) {
+                $recipe->ingredients()->create($ingredientData);
+            }
+        }
+
         return response()->json(['message' => 'Recipe updated successfully', 'recipe' => $recipe]);
     }
 
@@ -64,9 +77,7 @@ class RecipeController extends Controller
         if ($recipe->user_id != $temp_user->id) {
             return response()->json(['error' => "Unauthorized"], 400);
         }
-
         $recipe->delete();
         return response()->json(['message' => 'Recipe deleted successfully']);
     }
 }
-
